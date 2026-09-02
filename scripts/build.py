@@ -51,7 +51,9 @@ def main():
             cleaned.write_text(json.dumps(data, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
             destination = output / (tag + '.srs')
             subprocess.run([args.sing_box, 'rule-set', 'compile', str(cleaned), '-o', str(destination)], check=True)
-            check = subprocess.run([args.sing_box, 'rule-set', 'decompile', str(destination)], check=True, capture_output=True, text=True).stdout
+            audited = temp / (tag + '.audit.json')
+            subprocess.run([args.sing_box, 'rule-set', 'decompile', str(destination), '-o', str(audited)], check=True)
+            check = audited.read_text(encoding='utf-8')
             if any(key in check for key in ('"ip_cidr"', '"ip_is_private"', '"ip_accept_any"')):
                 raise RuntimeError(f'{tag} contains a forbidden address predicate')
 
