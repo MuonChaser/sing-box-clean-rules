@@ -12,6 +12,7 @@ SOURCES = {
     'dns-hk-telegram': META + 'telegram.srs',
     'dns-hk-category-porn': META + 'category-porn.srs',
     'dns-hk-pornhub': META + 'pornhub.srs',
+    'dns-steam-gfw': QH + 'gfw.json',
 }
 DOMAIN_KEYS = {'domain', 'domain_suffix', 'domain_keyword', 'domain_regex', 'invert'}
 
@@ -19,14 +20,25 @@ def fetch(url, path):
     with urllib.request.urlopen(url, timeout=60) as response:
         path.write_bytes(response.read())
 
-def clean_rule(rule):
+def clean_rule(rule, contains=None):
     if rule.get('type') == 'logical':
-        children = [clean_rule(item) for item in rule.get('rules', [])]
+        children = [clean_rule(item, contains) for item in rule.get('rules', [])]
         children = [item for item in children if item]
         if not children:
             return None
         return {'type': 'logical', 'mode': rule.get('mode', 'and'), 'rules': children}
-    result = {key: rule[key] for key in DOMAIN_KEYS if key in rule}
+    result = {}
+    for key in DOMAIN_KEYS:
+        if key not in rule:
+            continue
+        value = rule[key]
+        if contains and key != 'invert':
+            values = value if isinstance(value, list) else [value]
+            values = [item for item in values if contains in str(item).lower()]
+            if not values:
+                continue
+            value = values if isinstance(rule[key], list) else values[0]
+        result[key] = value
     return result or None
 
 def main():
@@ -46,7 +58,8 @@ def main():
                 source = temp / (tag + '.json')
                 subprocess.run([args.sing_box, 'rule-set', 'decompile', str(downloaded), '-o', str(source)], check=True)
             data = json.loads(source.read_text(encoding='utf-8'))
-            data['rules'] = [item for rule in data.get('rules', []) if (item := clean_rule(rule))]
+            keyword = 'steam' if tag == 'dns-steam-gfw' else None
+            data['rules'] = [item for rule in data.get('rules', []) if (item := clean_rule(rule, keyword))]
             cleaned = temp / (tag + '.clean.json')
             cleaned.write_text(json.dumps(data, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
             destination = output / (tag + '.srs')
